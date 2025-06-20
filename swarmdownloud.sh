@@ -33,8 +33,9 @@ if ! command -v python3 &> /dev/null; then
         echo "python3 kurulamadı. Elle kurmanız gerekiyor."
         exit 1
     fi
+else
+    echo "python3 zaten yüklü."
 fi
-echo "python3 zaten yüklü."
 
 # cloudflared kontrolü
 echo ">> cloudflared kontrol ediliyor..."
@@ -75,29 +76,35 @@ if ! command -v cloudflared &> /dev/null; then
         echo "cloudflared kurulamadı. Elle kurmanız gerekiyor."
         exit 1
     fi
+else
+    echo "cloudflared zaten yüklü."
 fi
-echo "cloudflared zaten yüklü."
 
-# HTTP sunucu başlatılıyor
+# Renk kodları
+BOLD='\033[1m'
+GREEN='\033[1;32m'
+NC='\033[0m'
+
+# HTTP sunucu başlat
 echo "HTTP sunucu başlatılıyor (port $PORT)..."
 python3 -m http.server "$PORT" &
 
 HTTP_PID=$!
 sleep 2
 
-# http.server çalışıyor mu kontrol et
+# Sunucu gerçekten çalışıyor mu kontrol et
 if ! kill -0 "$HTTP_PID" 2>/dev/null; then
     echo "HTTP sunucusu başlatılamadı!"
     exit 1
 fi
 
-# cloudflared tünel başlatılıyor
-echo "Cloudflared tüneli başlatılıyor..."
+# cloudflared tüneli başlat
+echo "Cloudflared tüneli kuruluyor..."
 cloudflared tunnel --url "http://localhost:$PORT" > /tmp/cloudflared.log 2>&1 &
 
 CLOUDFLARED_PID=$!
 
-# Tünel URL'sini bulmak için birkaç saniye bekle
+# Tünel URL'sini bulmak için birkaç saniyelik döngü
 TUNNEL_URL=""
 for i in {1..10}; do
     sleep 1
@@ -114,20 +121,15 @@ if [ -z "$TUNNEL_URL" ]; then
   exit 1
 fi
 
-# Renkler
-BOLD='\033[1m'
-GREEN='\033[1;32m'
-NC='\033[0m'
-
-# Başarılı mesaj
+# Bağlantıyı göster
 echo
 echo -e "${BOLD} 🐉 ShadoWeysel 🐉 ${NC}"
-echo -e "swarm.pem dosyasını indirmek için link:"
+echo -e "swarm.pem dosyasını indirmek için bu bağlantıyı kullanın:"
 echo -e "${GREEN}${TUNNEL_URL}/${FILE}${NC}"
 echo
 echo "Sunucuları durdurmak için Ctrl+C tuşlayın."
 
-# Ctrl+C yakala
+# Ctrl+C ile temiz kapatma
 trap "echo 'Sunucular durduruluyor...'; kill -TERM $HTTP_PID $CLOUDFLARED_PID; exit" INT
 
 wait
