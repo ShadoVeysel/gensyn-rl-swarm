@@ -9,22 +9,79 @@ if [ ! -f "$FILE" ]; then
   exit 1
 fi
 
-# python3 var mı?
+# python3 kontrolü
+echo ">> python3 kontrol ediliyor..."
 if ! command -v python3 &> /dev/null; then
-  echo "python3 yüklü değil, lütfen kurunuz."
-  exit 1
+    echo "python3 yüklü değil. Kurulum başlatılıyor..."
+
+    if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+        sudo apt-get update
+        sudo apt-get install -y python3 python3-pip
+    elif [[ "$OSTYPE" == "darwin"* ]]; then
+        if command -v brew &> /dev/null; then
+            brew install python
+        else
+            echo "Homebrew yüklü değil. python3'ü elle kurmanız gerekiyor."
+            exit 1
+        fi
+    else
+        echo "Desteklenmeyen işletim sistemi: $OSTYPE"
+        exit 1
+    fi
+
+    if command -v python3 &> /dev/null; then
+        echo "python3 başarıyla kuruldu."
+    else
+        echo "python3 kurulamadı. Elle kurmanız gerekiyor."
+        exit 1
+    fi
+else
+    echo "python3 zaten yüklü."
 fi
 
-# cloudflared var mı? Yoksa kur
-if ! command -v cloudflared &> /dev/null; then
-  echo "cloudflared yüklü değil, kuruluyor..."
-  curl -L https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o cloudflared
-  chmod +x cloudflared
-  sudo mv cloudflared /usr/local/bin/
-  if ! command -v cloudflared &> /dev/null; then
-    echo "cloudflared kurulamadı!"
+# cloudflared kontrolü
+echo ">> cloudflared kontrol ediliyor..."
+
+ARCH=$(uname -m)
+if [[ "$ARCH" == "x86_64" ]]; then
+    CLOUDFLARED_ARCH="amd64"
+elif [[ "$ARCH" == "aarch64" || "$ARCH" == "arm64" ]]; then
+    CLOUDFLARED_ARCH="arm64"
+else
+    echo "Desteklenmeyen mimari: $ARCH"
     exit 1
-  fi
+fi
+
+if ! command -v cloudflared &> /dev/null; then
+    echo "cloudflared yüklü değil. Kurulum başlatılıyor..."
+
+    mkdir -p /tmp/cloudflared-kurulum
+    cd /tmp/cloudflared-kurulum
+
+    if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+        curl -L "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-${CLOUDFLARED_ARCH}" -o cloudflared
+        chmod +x cloudflared
+        sudo mv cloudflared /usr/local/bin/
+    elif [[ "$OSTYPE" == "darwin"* ]]; then
+        curl -L "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-darwin-${CLOUDFLARED_ARCH}.tgz" -o cloudflared.tgz
+        tar -xzf cloudflared.tgz
+        chmod +x cloudflared
+        sudo mv cloudflared /usr/local/bin/
+    else
+        echo "Desteklenmeyen işletim sistemi: $OSTYPE"
+        exit 1
+    fi
+
+    cd - &> /dev/null
+
+    if command -v cloudflared &> /dev/null; then
+        echo "cloudflared başarıyla kuruldu."
+    else
+        echo "cloudflared kurulamadı. Elle kurmanız gerekiyor."
+        exit 1
+    fi
+else
+    echo "cloudflared zaten yüklü."
 fi
 
 # Renk kodları (kalın ve yeşil için)
