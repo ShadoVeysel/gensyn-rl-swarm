@@ -29,15 +29,12 @@ if ! command -v python3 &> /dev/null; then
         exit 1
     fi
 
-    if command -v python3 &> /dev/null; then
-        echo "python3 başarıyla kuruldu."
-    else
+    if ! command -v python3 &> /dev/null; then
         echo "python3 kurulamadı. Elle kurmanız gerekiyor."
         exit 1
     fi
-else
-    echo "python3 zaten yüklü."
 fi
+echo "python3 zaten yüklü."
 
 # cloudflared kontrolü
 echo ">> cloudflared kontrol ediliyor..."
@@ -56,7 +53,7 @@ if ! command -v cloudflared &> /dev/null; then
     echo "cloudflared yüklü değil. Kurulum başlatılıyor..."
 
     mkdir -p /tmp/cloudflared-kurulum
-    cd /tmp/cloudflared-kurulum
+    cd /tmp/cloudflared-kurulum || exit 1
 
     if [[ "$OSTYPE" == "linux-gnu"* ]]; then
         curl -L "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-${CLOUDFLARED_ARCH}" -o cloudflared
@@ -74,55 +71,63 @@ if ! command -v cloudflared &> /dev/null; then
 
     cd - &> /dev/null
 
-    if command -v cloudflared &> /dev/null; then
-        echo "cloudflared başarıyla kuruldu."
-    else
+    if ! command -v cloudflared &> /dev/null; then
         echo "cloudflared kurulamadı. Elle kurmanız gerekiyor."
         exit 1
     fi
-else
-    echo "cloudflared zaten yüklü."
 fi
+echo "cloudflared zaten yüklü."
 
-# Renk kodları (kalın ve yeşil için)
-BOLD='\033[1m'
-GREEN='\033[1;32m'
-NC='\033[0m'
-
-# HTTP server başlat
+# HTTP sunucu başlatılıyor
 echo "HTTP sunucu başlatılıyor (port $PORT)..."
 python3 -m http.server "$PORT" &
 
 HTTP_PID=$!
-
 sleep 2
 
-# cloudflared tunnel başlat
-echo "Cloudflared tüneli kuruluyor..."
+# http.server çalışıyor mu kontrol et
+if ! kill -0 "$HTTP_PID" 2>/dev/null; then
+    echo "HTTP sunucusu başlatılamadı!"
+    exit 1
+fi
+
+# cloudflared tünel başlatılıyor
+echo "Cloudflared tüneli başlatılıyor..."
 cloudflared tunnel --url "http://localhost:$PORT" > /tmp/cloudflared.log 2>&1 &
 
 CLOUDFLARED_PID=$!
 
-sleep 5
-
-# Tünel URL'sini bul
-TUNNEL_URL=$(grep -o 'https://[^ ]*\.trycloudflare\.com' /tmp/cloudflared.log | head -n 1)
+# Tünel URL'sini bulmak için birkaç saniye bekle
+TUNNEL_URL=""
+for i in {1..10}; do
+    sleep 1
+    TUNNEL_URL=$(grep -o 'https://[^ ]*\.trycloudflare\.com' /tmp/cloudflared.log | head -n 1)
+    if [[ -n "$TUNNEL_URL" ]]; then
+        break
+    fi
+done
 
 if [ -z "$TUNNEL_URL" ]; then
   echo "Tünel URL'si bulunamadı!"
-  kill $HTTP_PID
-  kill $CLOUDFLARED_PID
+  kill -TERM "$HTTP_PID" 2>/dev/null
+  kill -TERM "$CLOUDFLARED_PID" 2>/dev/null
   exit 1
 fi
 
+# Renkler
+BOLD='\033[1m'
+GREEN='\033[1;32m'
+NC='\033[0m'
+
+# Başarılı mesaj
 echo
 echo -e "${BOLD} 🐉 ShadoWeysel 🐉 ${NC}"
-echo -e "swarm.pem'i indirmek için bu linki kullanın:"
+echo -e "swarm.pem dosyasını indirmek için link:"
 echo -e "${GREEN}${TUNNEL_URL}/${FILE}${NC}"
 echo
 echo "Sunucuları durdurmak için Ctrl+C tuşlayın."
 
-# Ctrl+C yakala ve temizle
-trap "echo 'Sunucular durduruluyor...'; kill $HTTP_PID $CLOUDFLARED_PID; exit" INT
+# Ctrl+C yakala
+trap "echo 'Sunucular durduruluyor...'; kill -TERM $HTTP_PID $CLOUDFLARED_PID; exit" INT
 
 wait
